@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>three-portfolio</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,300;1,400&display=swap" rel="stylesheet"/>
+    <style>
+      #splash {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 32px;
+        cursor: pointer;
+        z-index: 999;
+        transition: opacity 0.85s cubic-bezier(0.4, 0, 0.2, 1),
+                    transform 0.85s cubic-bezier(0.4, 0, 0.2, 1);
+        will-change: opacity, transform;
+      }
+
+      #splash.hidden {
+        opacity: 0;
+        transform: scale(1.04);
+        pointer-events: none;
+      }
+
+      .splash-tagline {
+        font-family: 'Cormorant Garamond', Georgia, serif;
+        font-style: italic;
+        font-weight: 300;
+        font-size: clamp(1.4rem, 3.5vw, 2.6rem);
+        color: rgba(255, 255, 255, 0.82);
+        letter-spacing: 0.06em;
+        text-align: center;
+        line-height: 1.5;
+        animation: splashFadeUp 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+
+      .splash-dreams-img {
+        width: clamp(260px, 55vw, 720px);
+        animation: splashFadeUp 1.4s 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+
+      .splash-hint {
+        font-family: 'Cormorant Garamond', Georgia, serif;
+        font-style: italic;
+        font-size: clamp(0.7rem, 1.4vw, 0.95rem);
+        color: rgba(255,255,255,0.28);
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        animation: splashFadeUp 1.4s 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+        margin-top: 8px;
+      }
+
+      @keyframes splashFadeUp {
+        from { opacity: 0; transform: translateY(22px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash">
+      <p class="splash-tagline">The Portfolio Design of my&hellip;</p>
+      <img class="splash-dreams-img" src="/dreamsfont.png" alt="Dreams" />
+      <span class="splash-hint">click or scroll to enter</span>
+    </div>
+
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+
+    <script>
+      const splash = document.getElementById('splash');
+      function dismissSplash() {
+        if (!splash) return;
+        splash.classList.add('hidden');
+        setTimeout(() => splash.remove(), 900);
+      }
+      splash.addEventListener('click', dismissSplash);
+      window.addEventListener('scroll', dismissSplash, { once: true });
+      window.addEventListener('wheel', dismissSplash, { once: true });
+      window.addEventListener('touchmove', dismissSplash, { once: true });
+    </script>
+  </body>
+</html>
