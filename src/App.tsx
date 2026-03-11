@@ -1,6 +1,6 @@
 import { Canvas, useFrame } from '@react-three/fiber'
 import { ScrollControls, useScroll, useGLTF } from '@react-three/drei'
-import { useMemo, useRef, useLayoutEffect, useState, useCallback } from 'react'
+import { useMemo, useRef, useLayoutEffect } from 'react'
 import * as THREE from 'three'
 
 // ---------------------------------------------------------------------------
@@ -22,7 +22,7 @@ const SEGMENTS    = 240
 const TIGHT_AHEAD = 0.015
 const FAR_AHEAD   = 0.25
 const FOCUS_RATIO = 0.10
-const EYE_HEIGHT  = 1.6
+const EYE_HEIGHT  = 3.2
 
 // ---------------------------------------------------------------------------
 // Shared textures
@@ -747,6 +747,12 @@ const ISLAND_PROJECTS = [
 // This avoids React context bridging issues with R3F's separate reconciler
 const focusedIslandRef = { current: null as number | null }
 
+// Screen-space overlay data for each island — written by IslandProjectImage, read by DOM overlay
+type IslandOverlayData = { x: number; y: number; opacity: number; link: string; title: string }
+const islandOverlayRefs: IslandOverlayData[] = ISLAND_PROJECTS.map((p) => ({
+  x: 0, y: 0, opacity: 0, link: p.link, title: p.title,
+}))
+
 const ISLAND_SEED: [number, number, number, number][] = [
   // 4 islands alternating left/right, evenly spaced along path
   // Lowered by ~1.5 units (quarter of scale 6.0), spread out slightly more (±7.5)
@@ -794,90 +800,31 @@ for (const [tFrac, latWorld, vertOff] of ISLAND_SEED) {
 
 // Clickable image billboard embedded in the 3D scene above each island.
 // Visible only when the island is focused; opens the project link on click.
-function IslandProjectImage({ index, project }: { index: number; project: typeof ISLAND_PROJECTS[number] }) {
-  const [visible, setVisible] = useState(false)
-  const meshRef = useRef<THREE.Mesh>(null)
-  const matRef = useRef<THREE.MeshBasicMaterial>(null)
+function IslandProjectImage({ index }: { index: number }) {
+  const groupRef = useRef<THREE.Group>(null)
+  const projVec = useRef(new THREE.Vector3())
+  const opacityRef = useRef(0)
 
-  // Placeholder texture — white plane with project title baked via canvas
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 512
-    canvas.height = 320
-    const ctx = canvas.getContext('2d')!
-    // Background
-    ctx.fillStyle = '#f1f5f9'
-    ctx.fillRect(0, 0, 512, 320)
-    // Accent bar
-    ctx.fillStyle = '#1d4ed8'
-    ctx.fillRect(0, 280, 512, 40)
-    // Title
-    ctx.fillStyle = '#1a1a2e'
-    ctx.font = 'bold 32px system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText(project.title, 256, 120)
-    // Description
-    ctx.fillStyle = '#64748b'
-    ctx.font = '20px system-ui, sans-serif'
-    ctx.fillText(project.description, 256, 170)
-    // CTA
-    ctx.fillStyle = '#ffffff'
-    ctx.font = 'bold 20px system-ui, sans-serif'
-    ctx.fillText('Click to View Project', 256, 306)
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.colorSpace = THREE.SRGBColorSpace
-    return tex
-  }, [project.title, project.description])
-
-  useFrame(({ camera }) => {
+  useFrame(({ camera, size }) => {
     const isFocused = focusedIslandRef.current === index
-    if (isFocused !== visible) setVisible(isFocused)
+    const target = isFocused ? 1 : 0
+    opacityRef.current += (target - opacityRef.current) * 0.12
 
-    // Animate opacity
-    if (matRef.current) {
-      const target = isFocused ? 1 : 0
-      matRef.current.opacity += (target - matRef.current.opacity) * 0.12
-    }
+    if (groupRef.current) {
+      groupRef.current.lookAt(camera.position)
 
-    // Billboard: always face the camera
-    if (meshRef.current) {
-      meshRef.current.lookAt(camera.position)
+      // Project anchor point to screen space for DOM overlay
+      groupRef.current.getWorldPosition(projVec.current)
+      projVec.current.project(camera)
+      const overlay = islandOverlayRefs[index]
+      overlay.x = (projVec.current.x * 0.5 + 0.5) * size.width
+      overlay.y = (-projVec.current.y * 0.5 + 0.5) * size.height
+      overlay.opacity = opacityRef.current
     }
   })
 
-  const handleClick = useCallback((e: { stopPropagation: () => void }) => {
-    e.stopPropagation()
-    window.open(project.link, '_blank', 'noopener,noreferrer')
-  }, [project.link])
-
-  const handlePointerOver = useCallback(() => {
-    document.body.style.cursor = 'pointer'
-  }, [])
-
-  const handlePointerOut = useCallback(() => {
-    document.body.style.cursor = 'auto'
-  }, [])
-
   return (
-    <mesh
-      ref={meshRef}
-      position={[0, 3.5, 0]}
-      onClick={handleClick}
-      onPointerOver={handlePointerOver}
-      onPointerOut={handlePointerOut}
-      raycast={visible ? undefined : () => {}}
-    >
-      <planeGeometry args={[4, 2.5]} />
-      <meshBasicMaterial
-        ref={matRef}
-        map={texture}
-        transparent
-        opacity={0}
-        depthWrite={false}
-        side={THREE.DoubleSide}
-        toneMapped={false}
-      />
-    </mesh>
+    <group ref={groupRef} position={[0, 3.5, 0]} />
   )
 }
 
@@ -908,7 +855,7 @@ function IslandPlaceholder() {
           <group scale={island.scale}>
             <primitive object={scene.clone()} />
           </group>
-          <IslandProjectImage index={i} project={ISLAND_PROJECTS[i]} />
+          <IslandProjectImage index={i} />
         </group>
       ))}
     </>
@@ -1009,6 +956,22 @@ function CameraRig() {
 }
 
 // ---------------------------------------------------------------------------
+// Contact overlay — reads scroll from inside R3F, writes to a shared ref
+// that a pure-DOM sibling component reads.
+// ---------------------------------------------------------------------------
+const contactOpacityRef = { current: 0 }
+
+function ContactScrollTracker() {
+  const scroll = useScroll()
+  useFrame(() => {
+    const t = scroll.offset
+    const fadeStart = 0.90
+    contactOpacityRef.current = t > fadeStart ? Math.min((t - fadeStart) / 0.08, 1) : 0
+  })
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
 function Scene() {
@@ -1032,8 +995,214 @@ function Scene() {
       <CartoonClouds />
       <IslandPlaceholder />
       <OrbParticles />
+      <ContactScrollTracker />
       <CameraRig />
     </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Contact overlay — fixed DOM element on top of everything
+// ---------------------------------------------------------------------------
+function ContactOverlay() {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    let raf: number
+    const update = () => {
+      if (ref.current) {
+        const o = contactOpacityRef.current
+        ref.current.style.opacity = String(o)
+        // Only allow interaction when contact section is actually visible
+        const links = ref.current.querySelectorAll('a')
+        const pe = o > 0.05 ? 'auto' : 'none'
+        links.forEach((a) => { (a as HTMLElement).style.pointerEvents = pe })
+      }
+      raf = requestAnimationFrame(update)
+    }
+    raf = requestAnimationFrame(update)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  const linkStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '10px',
+    width: '220px',
+    padding: '13px 0',
+    background: 'rgba(255,255,255,0.07)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: '12px',
+    color: 'rgba(0,0,0,0.75)',
+    textDecoration: 'none',
+    fontSize: '15px',
+    fontFamily: "'Cormorant Garamond', Georgia, serif",
+    fontStyle: 'italic',
+    fontWeight: 400,
+    letterSpacing: '0.05em',
+    transition: 'background 0.3s, border-color 0.3s, color 0.3s',
+    pointerEvents: 'auto',
+  }
+
+  const hoverIn = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.currentTarget.style.background = 'rgba(0,0,0,0.08)'
+    e.currentTarget.style.borderColor = 'rgba(0,0,0,0.25)'
+    e.currentTarget.style.color = 'rgba(0,0,0,1)'
+  }
+  const hoverOut = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
+    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
+    e.currentTarget.style.color = 'rgba(0,0,0,0.75)'
+  }
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 100,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0,
+        pointerEvents: 'none',
+        transition: 'opacity 0.4s ease',
+      }}
+    >
+      <h2
+        style={{
+          fontFamily: "'Cormorant Garamond', Georgia, serif",
+          fontStyle: 'italic',
+          fontWeight: 300,
+          fontSize: 'clamp(1.6rem, 4vw, 2.8rem)',
+          color: 'rgba(0,0,0,0.88)',
+          letterSpacing: '0.05em',
+          marginBottom: '6px',
+        }}
+      >
+        Get in Touch
+      </h2>
+      <p
+        style={{
+          fontFamily: "'Cormorant Garamond', Georgia, serif",
+          fontStyle: 'italic',
+          fontSize: 'clamp(0.75rem, 1.6vw, 1rem)',
+          color: 'rgba(0,0,0,0.45)',
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          marginBottom: '40px',
+        }}
+      >
+        Let&rsquo;s create something together
+      </p>
+
+      <div style={{ display: 'flex', gap: '16px' }}>
+        <a
+          href="https://linkedin.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={linkStyle}
+          onMouseEnter={hoverIn}
+          onMouseLeave={hoverOut}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+          </svg>
+          LinkedIn
+        </a>
+
+        <a
+          href="https://yourwebsite.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={linkStyle}
+          onMouseEnter={hoverIn}
+          onMouseLeave={hoverOut}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+          Website
+        </a>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Island click overlays — pure DOM elements positioned via 3D→screen projection
+// ---------------------------------------------------------------------------
+function IslandClickOverlays() {
+  const refs = useRef<(HTMLAnchorElement | null)[]>([])
+
+  useLayoutEffect(() => {
+    let raf: number
+    const update = () => {
+      for (let i = 0; i < ISLAND_PROJECTS.length; i++) {
+        const el = refs.current[i]
+        const data = islandOverlayRefs[i]
+        if (!el) continue
+        el.style.transform = `translate(-50%, -50%) translate(${data.x}px, ${data.y}px)`
+        el.style.opacity = String(data.opacity)
+        el.style.pointerEvents = data.opacity > 0.3 ? 'auto' : 'none'
+      }
+      raf = requestAnimationFrame(update)
+    }
+    raf = requestAnimationFrame(update)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, pointerEvents: 'none' }}>
+      {ISLAND_PROJECTS.map((project, i) => (
+        <a
+          key={i}
+          ref={(el) => { refs.current[i] = el }}
+          href={project.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            padding: '10px 24px',
+            background: 'rgba(255,255,255,0.10)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            border: '1px solid rgba(125,211,252,0.4)',
+            borderRadius: '10px',
+            color: 'rgba(0,0,0,0.85)',
+            textDecoration: 'none',
+            fontSize: '14px',
+            fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif",
+            fontWeight: 500,
+            letterSpacing: '0.02em',
+            cursor: 'pointer',
+            opacity: 0,
+            pointerEvents: 'none',
+            transition: 'background 0.2s, border-color 0.2s',
+            whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(125,211,252,0.2)'
+            e.currentTarget.style.borderColor = 'rgba(125,211,252,0.7)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.10)'
+            e.currentTarget.style.borderColor = 'rgba(125,211,252,0.4)'
+          }}
+        >
+          View Project
+        </a>
+      ))}
+    </div>
   )
 }
 
@@ -1042,10 +1211,14 @@ function Scene() {
 // ---------------------------------------------------------------------------
 export default function App() {
   return (
-    <Canvas shadows camera={{ position: [0, 1.6, 0], fov: 72, near: 0.1, far: 200 }}>
-      <ScrollControls pages={6} damping={0.25}>
-        <Scene />
-      </ScrollControls>
-    </Canvas>
+    <>
+      <Canvas shadows camera={{ position: [0, 1.6, 0], fov: 72, near: 0.1, far: 200 }}>
+        <ScrollControls pages={6} damping={0.25}>
+          <Scene />
+        </ScrollControls>
+      </Canvas>
+      <IslandClickOverlays />
+      <ContactOverlay />
+    </>
   )
 }

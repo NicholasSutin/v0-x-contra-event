@@ -51,12 +51,18 @@
       .splash-hint {
         font-family: 'Cormorant Garamond', Georgia, serif;
         font-style: italic;
-        font-size: clamp(0.7rem, 1.4vw, 0.95rem);
-        color: rgba(255,255,255,0.28);
-        letter-spacing: 0.22em;
+        font-size: clamp(0.85rem, 1.6vw, 1.1rem);
+        color: rgba(255,255,255,0.55);
+        letter-spacing: 0.18em;
         text-transform: uppercase;
-        animation: splashFadeUp 1.4s 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+        animation: splashFadeUp 1.4s 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
+                   splashPulse 3s 2s ease-in-out infinite;
         margin-top: 8px;
+      }
+
+      @keyframes splashPulse {
+        0%, 100% { opacity: 0.55; }
+        50% { opacity: 0.85; }
       }
 
       @keyframes splashFadeUp {
