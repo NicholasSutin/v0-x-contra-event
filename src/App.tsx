@@ -737,10 +737,10 @@ function CartoonClouds() {
 // Clouds are at ±8-14.5, so islands at ±5-7 will be visible between path and clouds
 // Island project data for UI overlays
 const ISLAND_PROJECTS = [
-  { title: 'Project Alpha', description: 'A creative web experience', link: 'https://example.com/alpha' },
-  { title: 'Project Beta', description: 'Interactive 3D visualization', link: 'https://example.com/beta' },
-  { title: 'Project Gamma', description: 'Design system showcase', link: 'https://example.com/gamma' },
-  { title: 'Project Delta', description: 'Full-stack application', link: 'https://example.com/delta' },
+  { title: 'Project Alpha', description: 'A creative web experience', link: '#' },
+  { title: 'Project Beta', description: 'Interactive 3D visualization', link: '#' },
+  { title: 'Project Gamma', description: 'Design system showcase', link: '#' },
+  { title: 'Project Delta', description: 'Full-stack application', link: '#' },
 ]
 
 // Global mutable ref for focused island index — written by CameraRig, read by IslandProjectCard
@@ -829,7 +829,10 @@ function IslandProjectImage({ index }: { index: number }) {
 }
 
 function IslandPlaceholder() {
-  const { scene } = useGLTF('/islandone.glb')
+  const { scene: sceneOne } = useGLTF('/islandone.glb')
+  const { scene: sceneTwo } = useGLTF('/rockandplants.glb')
+  const { scene: sceneThree } = useGLTF('/treeisland.glb')
+  const { scene: sceneFour } = useGLTF('/phonegraph.glb')
 
   const islands = useMemo(() => {
     return ISLAND_SEED.map(([tFrac, latWorld, vertOff, scale]) => {
@@ -845,6 +848,8 @@ function IslandPlaceholder() {
     })
   }, [])
 
+  const scenes = [sceneOne, sceneTwo, sceneThree, sceneFour]
+
   return (
     <>
       {islands.map((island, i) => (
@@ -852,8 +857,8 @@ function IslandPlaceholder() {
           key={`island-${i}`}
           position={[island.position.x, island.position.y, island.position.z]}
         >
-          <group scale={island.scale}>
-            <primitive object={scene.clone()} />
+          <group scale={island.scale} position={i === 2 ? [0, 0.8, 0] : [0, 0, 0]}>
+            <primitive object={(scenes[i] ?? sceneOne).clone()} />
           </group>
           <IslandProjectImage index={i} />
         </group>
@@ -862,8 +867,11 @@ function IslandPlaceholder() {
   )
 }
 
-// Preload the GLB
+// Preload the GLBs
 useGLTF.preload('/islandone.glb')
+useGLTF.preload('/rockandplants.glb')
+useGLTF.preload('/treeisland.glb')
+useGLTF.preload('/phonegraph.glb')
 
 // ---------------------------------------------------------------------------
 // Camera rig — double-interpolated with island focus
@@ -1103,7 +1111,7 @@ function ContactOverlay() {
 
       <div style={{ display: 'flex', gap: '16px' }}>
         <a
-          href="https://linkedin.com"
+          href="https://linkedin.com/in/nicholassutin"
           target="_blank"
           rel="noopener noreferrer"
           style={linkStyle}
@@ -1117,7 +1125,7 @@ function ContactOverlay() {
         </a>
 
         <a
-          href="https://yourwebsite.com"
+          href="https://nicholassutin.com"
           target="_blank"
           rel="noopener noreferrer"
           style={linkStyle}
@@ -1166,7 +1174,7 @@ function IslandClickOverlays() {
           key={i}
           ref={(el) => { refs.current[i] = el }}
           href={project.link}
-          target="_blank"
+          
           rel="noopener noreferrer"
           style={{
             position: 'absolute',

@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc --noEmit)"
+      "Bash(npx tsc --noEmit)",
+      "Bash(ls /Users/nick/Downloads/three-portfolio-main/public/*.glb)"
     ]
   }
 }
