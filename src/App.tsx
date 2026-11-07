@@ -1111,9 +1111,7 @@ function ContactOverlay() {
 
       <div style={{ display: 'flex', gap: '16px' }}>
         <a
-          href="https://linkedin.com/in/nicholassutin"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="#"
           style={linkStyle}
           onMouseEnter={hoverIn}
           onMouseLeave={hoverOut}
@@ -1125,9 +1123,7 @@ function ContactOverlay() {
         </a>
 
         <a
-          href="https://nicholassutin.com"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="#"
           style={linkStyle}
           onMouseEnter={hoverIn}
           onMouseLeave={hoverOut}
